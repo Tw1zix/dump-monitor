@@ -1,0 +1,10 @@
+   models/*.pt
+   *.pt
+   .venv/
+   .idea/
+   __pycache__/
+   uploads/
+   inbox/
+   static/crops/
+   detections.db
+   zones.json

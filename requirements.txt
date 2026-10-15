@@ -1,0 +1,4 @@
+flask>=3.0
+opencv-python-headless>=4.8
+numpy>=1.24
+ultralytics>=8.4   # обязательно: нужна для models/best.pt (обучена на 8.4.175)
