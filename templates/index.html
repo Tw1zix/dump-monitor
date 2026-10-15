@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Мониторинг несанкционированных свалок</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+<style>
+  :root {
+    --bg: #edf0ec; --panel: #ffffff; --ink: #18231d; --muted: #5d6b63; --line: #d9dfd9;
+    --forest: #173a2b; --forest-2: #1f4a38; --accent: #1f7a52; --accent-d: #17603f;
+    --fix: #1f8a5a; --float: #d9822b; --none: #8a97a0; --danger: #b3392f;
+    --soft: #f6f8f6; --soft-2: #f1f8f4; --r-lg: 14px; --r-md: 9px; --r-sm: 6px;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; font-family: 'Golos Text', 'Segoe UI', Arial, sans-serif; background: var(--bg);
+         color: var(--ink); font-size: 15px; line-height: 1.5; display: flex; }
+  h2 { font-size: 18px; margin: 0 0 4px; font-weight: 600; }
+  .sub { margin: 0 0 18px; color: var(--muted); font-size: 14px; }
+  :focus-visible { outline: 3px solid #f2b84b; outline-offset: 2px; }
+
+  /* ---------- боковая панель ---------- */
+  aside { width: 248px; flex: none; background: var(--forest); color: #e6efe9; padding: 22px 16px;
+          display: flex; flex-direction: column; gap: 26px; position: sticky; top: 0; height: 100vh; }
+  .brand { display: flex; gap: 12px; align-items: center; padding: 0 6px; }
+  .brand svg { flex: none; }
+  .brand b { display: block; font-size: 15px; line-height: 1.25; font-weight: 600; }
+  .brand span { font-size: 12.5px; color: #9bb8a8; }
+  nav { display: flex; flex-direction: column; gap: 4px; }
+  nav button { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; border: none;
+               background: none; color: #bcd0c4; font: inherit; font-weight: 500; padding: 11px 12px;
+               border-radius: var(--r-md); cursor: pointer; transition: background .15s, color .15s; }
+  nav button svg { flex: none; opacity: .85; }
+  nav button:hover { background: var(--forest-2); color: #fff; }
+  nav button.active { background: #f0f5f1; color: var(--forest); font-weight: 600; }
+  .aside-foot { margin-top: auto; font-size: 12.5px; color: #8fae9d; padding: 0 6px; }
+
+  /* ---------- основное ---------- */
+  main { flex: 1; min-width: 0; padding: 28px 32px 40px; }
+  .tab { display: none; } .tab.active { display: block; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg);
+          padding: 22px 24px; margin-bottom: 20px; }
+  .head-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+
+  /* форма */
+  .drops { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
+  .drop { position: relative; border: 2px dashed #b8c4bb; border-radius: var(--r-md); padding: 22px 16px;
+          text-align: center; background: var(--soft); transition: border-color .15s, background .15s; cursor: pointer; }
+  .drop:hover, .drop.has-file { border-color: var(--accent); background: var(--soft-2); }
+  .drop input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+  .drop svg { color: var(--accent); margin-bottom: 6px; }
+  .drop strong { display: block; font-weight: 600; }
+  .drop small { color: var(--muted); display: block; word-break: break-all; }
+  .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; max-width: 560px; }
+  label.f { display: block; font-size: 13.5px; font-weight: 500; color: #33423a; }
+  label.f small { display: block; font-weight: 400; color: var(--muted); margin-top: 2px; }
+  input[type=number], input[type=text] { width: 100%; margin-top: 6px; padding: 10px 12px; font: inherit;
+      border: 1px solid #c3cdc6; border-radius: var(--r-sm); background: var(--panel); color: var(--ink); }
+  input[type=number]:focus, input[type=text]:focus { border-color: var(--accent); outline: none;
+      box-shadow: 0 0 0 3px rgba(31,122,82,.18); }
+  .btn { background: var(--accent); color: #fff; border: none; padding: 12px 26px; border-radius: var(--r-md);
+         font: inherit; font-weight: 600; cursor: pointer; margin-top: 20px; transition: background .15s; }
+  .btn:hover { background: var(--accent-d); }
+  .btn:disabled { background: #9fb3a7; cursor: progress; }
+  .btn.ghost { margin: 0; background: var(--panel); color: var(--ink); border: 1px solid #b8c4bb; padding: 9px 16px; }
+  .btn.ghost:hover { background: var(--soft); }
+
+  /* прогресс */
+  #progress-wrap { display: none; margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--line); }
+  .prog-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+  #progress-pct { font-size: 28px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+  #progress-bar { height: 10px; background: var(--line); border-radius: 99px; overflow: hidden; }
+  #progress-fill { height: 100%; width: 0%; background: var(--accent); border-radius: 99px; transition: width .4s; }
+  #progress-text { margin: 10px 0 0; color: var(--muted); font-size: 14px; }
+
+  /* таблицы */
+  .tbl-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 11px 12px; border-bottom: 1px solid #e7ece8; text-align: left; vertical-align: middle; }
+  th { font-weight: 600; color: var(--muted); font-size: 13px; background: var(--soft); white-space: nowrap; }
+  td.num, td.coord { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  img.thumb { width: 96px; height: 60px; object-fit: cover; border-radius: var(--r-sm); display: block; }
+  .empty { text-align: center; color: var(--muted); padding: 28px 12px !important; }
+  .tag { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+  .tag::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: var(--none); }
+  .tag.fix::before { background: var(--fix); } .tag.float::before { background: var(--float); }
+  .tag.done::before { background: var(--fix); } .tag.running::before { background: var(--float); }
+  .tag.error::before { background: var(--danger); }
+  .x { background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; padding: 4px 8px;
+       border-radius: var(--r-sm); }
+  .x:hover { color: var(--danger); background: #fbeceb; }
+
+  /* показатели */
+  .stats { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md);
+          padding: 14px 20px; min-width: 150px; color: var(--muted); font-size: 13.5px; }
+  .stat b { display: block; font-size: 24px; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1.2; }
+
+  /* карта: на всю вкладку, показатели поверх */
+  #tab-map { position: relative; margin: -28px -32px -40px; }
+  #map { height: 100vh; border-radius: 0; z-index: 1; }
+  #map-stats { position: absolute; z-index: 500; top: 18px; left: 18px; margin: 0; flex-direction: column;
+               gap: 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg);
+               padding: 8px 6px; box-shadow: 0 6px 24px rgba(23,58,43,.18); min-width: 210px; }
+  #map-stats .stat { border: none; background: none; padding: 8px 14px; display: flex; align-items: center;
+                     justify-content: space-between; gap: 18px; min-width: 0; }
+  #map-stats .stat b { font-size: 18px; order: 2; }
+  #map-stats .stat i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+  #map-note { display: none; position: absolute; z-index: 500; bottom: 24px; left: 50%; transform: translateX(-50%);
+              background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md); padding: 12px 18px;
+              box-shadow: 0 6px 24px rgba(23,58,43,.18); max-width: 440px; text-align: center; font-size: 14px; }
+  .leaflet-popup-content { font-family: inherit; line-height: 1.5; }
+  .popup-img { width: 220px; border-radius: var(--r-sm); margin-top: 6px; display: block; }
+
+  [data-theme=dark] { --bg:#111a15; --panel:#18241d; --ink:#e6efe9; --muted:#9db3a6; --line:#2b3a31;
+                      --soft:#1d2b23; --soft-2:#203329; color-scheme: dark; }
+  .aside-foot .btn { width: 100%; margin-bottom: 10px; background: transparent; color: #cfe0d6; border-color: #3b5c4c; }
+  .tag.st-checked::before { background: #3b82c4; } .tag.st-confirmed::before { background: var(--fix); }
+  .tag.st-false::before { background: var(--danger); }
+  .filters { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin: 4px 0 14px; }
+  .filters select { padding: 9px 10px; font: inherit; border: 1px solid #c3cdc6; border-radius: var(--r-sm);
+                    background: var(--panel); color: var(--ink); }
+  .filters label { font-size: 13px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+  .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  #lb { position: fixed; inset: 0; z-index: 2000; background: rgba(10,18,14,.88); display: flex;
+        align-items: center; justify-content: center; padding: 20px; }
+  #lb[hidden] { display: none; }
+  .lb-box { display: flex; align-items: center; gap: 12px; max-width: 1100px; width: 100%; }
+  .lb-main { flex: 1; min-width: 0; background: var(--panel); border-radius: var(--r-lg); padding: 14px; }
+  #lb-img { width: 100%; max-height: 62vh; object-fit: contain; border-radius: var(--r-md); background: #0d1511; display: block; }
+  #lb-info { margin: 12px 0; font-size: 14px; }
+  .lb-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .lb-actions .on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .lb-nav { flex: none; width: 44px; height: 44px; border-radius: 50%; border: none; background: #f0f5f1; font-size: 24px; cursor: pointer; }
+  #lb-close { position: fixed; top: 14px; right: 16px; color: #fff; font-size: 22px; }
+  @media (max-width: 860px) {
+    body { flex-direction: column; }
+    aside { width: 100%; height: auto; position: static; flex-direction: row; align-items: center;
+            padding: 12px 14px; gap: 14px; overflow-x: auto; }
+    .brand span, .aside-foot { display: none; } .brand b { font-size: 14px; }
+    nav { flex-direction: row; } nav button { padding: 9px 12px; white-space: nowrap; }
+    main { padding: 18px 14px 28px; }
+    #tab-map { margin: -18px -14px -28px; } #map { height: 78vh; }
+    .drops, .fields { grid-template-columns: 1fr; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<aside>
+  <div class="brand">
+    <svg width="38" height="38" viewBox="0 0 38 38" fill="none" aria-hidden="true">
+      <rect width="38" height="38" rx="10" fill="#f0f5f1"/>
+      <circle cx="19" cy="19" r="8" stroke="#1f7a52" stroke-width="2.4"/>
+      <circle cx="19" cy="19" r="2.6" fill="#1f7a52"/>
+      <path d="M19 5v6M19 27v6M5 19h6M27 19h6" stroke="#173a2b" stroke-width="2.4" stroke-linecap="round"/>
+    </svg>
+    <div><b>Мониторинг свалок</b><span>Дрон, RTK и ИИ</span></div>
+  </div>
+  <nav>
+    <button class="active" data-tab="tab-process">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>
+      Обработка записи</button>
+    <button data-tab="tab-map">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>
+      Карта находок</button>
+    <button data-tab="tab-report">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h7"/></svg>
+      Отчёты</button>
+  </nav>
+  <div class="aside-foot"><button class="btn ghost" id="theme-btn" type="button">Тёмная тема</button>Находки сохраняются вместе с координатами и снимком.</div>
+</aside>
+
+<main>
+<!-- ВКЛАДКА 1: обработка -->
+<section id="tab-process" class="tab active">
+  <div class="card">
+    <h2>Загрузка записи с дрона</h2>
+    <p class="sub">Загрузите видео, ИИ проверит кадры и отметит найденный мусор на карте.</p>
+    <form id="upload-form">
+      <div class="drops">
+        <label class="drop" id="drop-video">
+          <input type="file" name="video" accept="video/*" required>
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/></svg>
+          <strong>Видео с дрона</strong><small>MP4 или MOV. Нажмите, чтобы выбрать файл</small>
+        </label>
+        <label class="drop" id="drop-srt">
+          <input type="file" name="srt" accept=".srt">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+          <strong>Телеметрия SRT</strong><small>RTK-координаты. Необязательно</small>
+        </label>
+      </div>
+      <div class="fields">
+        <label class="f">Интервал проверки кадров, мс
+          <input type="number" name="interval" value="1000" min="200" step="100"></label>
+        <label class="f">Порог уверенности ИИ
+          <input type="number" name="conf" value="0.4" min="0.1" max="0.9" step="0.05">
+          <small>от 0.1 до 0.9</small></label>
+      </div>
+      <p class="sub" id="est" style="margin:16px 0 0"></p>
+      <button class="btn" type="submit" id="submit-btn">Запустить обработку</button>
+    </form>
+    <div id="progress-wrap">
+      <div class="prog-top"><strong>Ход обработки</strong><span id="progress-pct">0%</span></div>
+      <div id="progress-bar"><div id="progress-fill"></div></div>
+      <p id="progress-text"></p>
+      <button class="btn ghost" id="stop-btn" type="button" style="margin-top:12px">Остановить обработку</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Найдено при текущей обработке</h2>
+    <p class="sub">Показаны последние 30 находок.</p>
+    <div class="tbl-wrap">
+    <table id="live-table">
+      <thead><tr><th>Кадр</th><th>Уверенность</th><th>Координаты</th><th>RTK</th></tr></thead>
+      <tbody><tr><td colspan="4" class="empty">Находки появятся здесь, когда ИИ начнёт их обнаруживать.</td></tr></tbody>
+    </table>
+    </div>
+  </div>
+</section>
+
+<!-- ВКЛАДКА 2: карта -->
+<section id="tab-map" class="tab">
+  <div class="stats" id="map-stats"></div>
+  <div id="map-note">Находки есть, но у них нет координат. Чтобы они появились на карте, загрузите видео вместе с файлом SRT.</div>
+  <div id="map"></div>
+</section>
+
+<!-- ВКЛАДКА 3: отчёты -->
+<section id="tab-report" class="tab">
+  <div class="stats" id="report-stats"></div>
+  <div class="card">
+    <h2>Свалки</h2><p class="sub">Находки ближе 20 м друг к другу объединены в одну свалку.</p>
+    <div class="tbl-wrap"><table id="sites-table"><thead><tr><th>№</th><th>Находок</th><th>Координаты</th>
+      <th>Охранные зоны</th><th>Статус</th><th></th></tr></thead><tbody></tbody></table></div>
+  </div>
+  <div class="card">
+    <div class="head-row">
+      <div><h2>Реестр обнаружений</h2><p class="sub">Последние найденные объекты.</p></div>
+      <div class="btns"><button class="btn ghost" onclick="location='/api/export/csv'">CSV</button>
+        <button class="btn ghost" onclick="location='/api/export/geojson'">GeoJSON</button>
+        <button class="btn ghost" onclick="downloadZip()">Снимки ZIP</button>
+        <button class="btn ghost" onclick="window.open('/report/print')">Отчёт для печати</button>
+        <button class="btn ghost" onclick="location='/api/export/false'" title="Снимки с отметкой «Ложная»">Ложные для дообучения</button>
+        <button class="btn ghost" onclick="location='/api/backup'">Резервная копия</button>
+        <label class="btn ghost" style="cursor:pointer" title="Файл GeoJSON с границами зон">Загрузить зоны<input type="file" id="zones-file" accept=".json,.geojson" hidden></label></div>
+    </div>
+    <div class="filters">
+      <label>Видео<select id="f-video"><option value="">Все видео</option></select></label>
+      <label>RTK<select id="f-rtk"><option value="">Любой</option><option value="fix">RTK fix</option>
+        <option value="float">RTK float</option><option value="none">Нет RTK</option></select></label>
+      <label>Статус<select id="f-status"><option value="">Любой</option><option value="new">Новая</option>
+        <option value="checked">Проверена</option><option value="confirmed">Подтверждена</option>
+        <option value="false">Ложная</option></select></label>
+      <label>Уверенность от <output id="f-conf-out">0%</output>
+        <input type="range" id="f-conf" min="0" max="90" step="5" value="0"></label>
+    </div>
+    <div class="tbl-wrap">
+    <table id="report-table">
+      <thead><tr><th>ID</th><th>Видео</th><th>Кадр</th><th>Координаты</th><th>Уверенность</th>
+                  <th>RTK</th><th>Статус</th><th>Дата</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Обработанные задания</h2>
+    <p class="sub">История загрузок и их результат.</p>
+    <div class="tbl-wrap">
+    <table id="jobs-table">
+      <thead><tr><th>ID</th><th>Видео</th><th>Статус</th><th>Кадров проверено</th>
+                  <th>Находок</th><th>Создано</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    </div>
+  </div>
+</section>
+</main>
+
+<div id="lb" hidden><button class="x" id="lb-close" aria-label="Закрыть">✕</button>
+  <div class="lb-box"><button class="lb-nav" id="lb-prev" aria-label="Назад">‹</button>
+    <div class="lb-main"><img id="lb-img" alt=""><div id="lb-info"></div><div class="lb-actions" id="lb-actions"></div></div>
+    <button class="lb-nav" id="lb-next" aria-label="Вперёд">›</button></div></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script>
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const rawName = n => String(n ?? '').replace(/^[0-9a-f]{12}_/, '');
+const vname = n => esc(rawName(n));
+const coords = d => d.lat != null ? d.lat.toFixed(6) + ', ' + d.lon.toFixed(6) : '—';
+const empty = (n, text) => `<tr><td colspan="${n}" class="empty">${text}</td></tr>`;
+
+// --- вкладки ---
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  document.getElementById(b.dataset.tab).classList.add('active');
+  if (b.dataset.tab === 'tab-map') { map.invalidateSize(); refreshMap(); }
+  if (b.dataset.tab === 'tab-report') refreshReport();
+});
+
+// --- выбор файлов ---
+document.querySelectorAll('.drop input').forEach(inp => inp.onchange = () => {
+  const box = inp.closest('.drop'), hint = box.querySelector('small');
+  if (!hint.dataset.def) hint.dataset.def = hint.textContent;
+  box.classList.toggle('has-file', !!inp.files.length);
+  hint.textContent = inp.files.length ? inp.files[0].name : hint.dataset.def;
+  if (inp.name === 'video') {
+    $('est').textContent = '';
+    if (inp.files[0]) { const v = document.createElement('video'); v.preload = 'metadata';
+      v.onloadedmetadata = () => { const sec = v.duration, iv = +form.interval.value || 1000;
+        $('est').textContent = `Длительность ${Math.floor(sec/60)} мин ${Math.round(sec%60)} с. Будет проверено около ${Math.max(1, Math.floor(sec*1000/iv))} кадров.`;
+        URL.revokeObjectURL(v.src); };
+      v.src = URL.createObjectURL(inp.files[0]); }
+  }
+});
+
+// --- карта ---
+const map = L.map('map').setView([55.75, 37.62], 5);
+const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+  {attribution: '© OpenStreetMap'}).addTo(map);
+const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  {attribution: 'Esri', maxZoom: 19});
+const layers = L.control.layers({'Схема': osm, 'Спутник': sat}, {}, {position: 'topright'}).addTo(map);
+let cluster = L.markerClusterGroup().addTo(map);
+
+function rtkColor(rtk) {
+  if (rtk === 'fix') return '#1f8a5a';
+  if (rtk === 'float') return '#d9822b';
+  return '#8a97a0';
+}
+async function refreshMap() {
+  const data = await (await fetch('/api/detections')).json();
+  ALL = data; markers = {}; const pts = [];
+  cluster.clearLayers();
+  let withGeo = 0;
+  data.forEach(d => {
+    if (d.lat == null || d.status === 'false') return;
+    withGeo++; pts.push([d.lat, d.lon, d.confidence]);
+    const m = L.circleMarker([d.lat, d.lon], {radius: 8, color: '#fff', fillColor: rtkColor(d.rtk),
+      fillOpacity: 0.95, weight: 2});
+    m.bindPopup(`<b>Уверенность: ${(d.confidence*100).toFixed(0)}%</b><br>
+      RTK: ${esc(d.rtk || 'нет')}<br>Видео: ${vname(d.video_name)}<br>
+      <img class="popup-img" src="/${esc(d.image_path)}">
+      <button class="btn ghost" style="margin-top:8px" onclick="openById(${d.id})">Открыть снимок</button>
+      <a href="https://www.google.com/maps/dir/?api=1&destination=${d.lat},${d.lon}" target="_blank">Маршрут</a>`);
+    markers[d.id] = m; cluster.addLayer(m);
+  });
+  const dot = c => `<i style="background:${c}"></i>`;
+  document.getElementById('map-stats').innerHTML =
+    `<div class="stat"><span>Всего находок</span><b>${data.length}</b></div>
+     <div class="stat"><span>С координатами</span><b>${withGeo}</b></div>
+     <div class="stat"><span>${dot('#1f8a5a')}RTK fix</span><b>${data.filter(d=>d.rtk==='fix').length}</b></div>
+     <div class="stat"><span>${dot('#d9822b')}RTK float</span><b>${data.filter(d=>d.rtk==='float').length}</b></div>`;
+  const note = document.getElementById('map-note');
+  note.style.display = (data.length && !withGeo) ? 'block' : 'none';
+  const zr = await (await fetch('/api/zones')).json();
+  if (zoneLayer) { map.removeLayer(zoneLayer); layers.removeLayer(zoneLayer); zoneLayer = null; }
+  if (zr.features.length) {
+    zoneLayer = L.geoJSON(zr, {style: {color: '#c0392b', weight: 2, fillOpacity: .08},
+      onEachFeature: (f, l) => l.bindTooltip((f.properties || {}).name || 'Зона')});
+    layers.addOverlay(zoneLayer, 'Охранные зоны'); zoneLayer.addTo(map);
+  }
+  const wasOn = heat && map.hasLayer(heat);
+  if (heat) { map.removeLayer(heat); layers.removeLayer(heat); heat = null; }
+  if (pts.length) { heat = L.heatLayer(pts, {radius: 28, blur: 22}); layers.addOverlay(heat, 'Плотность'); if (wasOn) heat.addTo(map); }
+  if (withGeo) map.fitBounds(cluster.getBounds().pad(0.2));
+  if (pendingId && markers[pendingId]) { const m = markers[pendingId]; map.setView(m.getLatLng(), 18); cluster.zoomToShowLayer(m, () => m.openPopup()); }
+  pendingId = null;
+}
+
+// --- отчёты ---
+function rtkTag(rtk) {
+  const cls = rtk === 'fix' ? 'fix' : (rtk === 'float' ? 'float' : 'none');
+  const label = rtk === 'fix' ? 'RTK fix' : (rtk === 'float' ? 'RTK float' : 'Нет RTK');
+  return `<span class="tag ${cls}">${label}</span>`;
+}
+const statusRu = {queued: 'В очереди', stopped: 'Остановлено', running: 'Идёт', done: 'Готово', error: 'Ошибка или прервано'};
+async function refreshReport() {
+  const [r, det] = await Promise.all([fetch('/api/report').then(x => x.json()), fetch('/api/detections').then(x => x.json())]);
+  ALL = det;
+  $('report-stats').innerHTML =
+    `<div class="stat"><b>${r.total}</b>всего обнаружений</div>` +
+    r.by_video.map(v => `<div class="stat"><b>${v.cnt}</b>${vname(v.video_name)}<br>
+       <small>ср. уверенность ${(v.avg_conf*100).toFixed(0)}%</small></div>`).join('');
+  const sel = $('f-video'), cur = sel.value;
+  sel.innerHTML = '<option value="">Все видео</option>' +
+    [...new Set(det.map(d => rawName(d.video_name)))].map(v => `<option>${esc(v)}</option>`).join('');
+  sel.value = cur;
+  renderRegistry(); renderSites();
+  document.querySelector('#jobs-table tbody').innerHTML = r.jobs.length ? r.jobs.map(j =>
+    `<tr><td>${esc(j.id)}</td><td>${esc(j.video_name)}</td>
+     <td><span class="tag ${esc(j.status)}">${statusRu[j.status] || esc(j.status)}</span></td>
+     <td class="num">${Math.min(j.done_frames, j.total_frames)}/${j.total_frames}</td><td class="num">${j.detections}</td>
+     <td>${esc(j.created_at)}</td><td style="white-space:nowrap"><a href="/report/print?job=${esc(j.id)}" target="_blank">Отчёт</a> <button class="x" title="Удалить задание и его снимки" onclick="delJob('${esc(j.id)}')">✕</button></td></tr>`).join('') : empty(7, 'Заданий пока нет.');
+}
+async function delDetection(id) {
+  if (!confirm('Удалить находку и её снимки? Это нельзя отменить.')) return;
+  await fetch(`/api/detection/${id}/delete`, {method: 'POST'});
+  refreshReport();
+}
+function downloadZip() { window.location = '/api/download/zip'; }
+
+// --- загрузка и обработка ---
+const form = document.getElementById('upload-form');
+const submitBtn = document.getElementById('submit-btn');
+let pollTimer = null;
+form.onsubmit = async e => {
+  e.preventDefault();
+  submitBtn.disabled = true; submitBtn.textContent = 'Загружаем видео…';
+  const fd = new FormData(form);
+  let res;
+  try { res = await (await fetch('/api/upload', {method: 'POST', body: fd})).json(); }
+  catch (err) { res = {error: 'Не удалось связаться с сервером. Проверьте, что он запущен.'}; }
+  if (res.error) { alert(res.error); submitBtn.disabled = false; submitBtn.textContent = 'Запустить обработку'; return; }
+  document.getElementById('progress-wrap').style.display = 'block';
+  $('stop-btn').style.display = ''; $('stop-btn').disabled = false; window.curJob = res.job_id; window.t0 = Date.now();
+  clearInterval(pollTimer);
+  pollTimer = setInterval(() => pollJob(res.job_id), 1500);
+};
+async function pollJob(jobId) {
+  const j = await (await fetch('/api/job/' + jobId)).json();
+  const pct = j.total_frames ? Math.min(100, Math.round(j.done_frames / j.total_frames * 100)) : 0;
+  const eta = (j.status === 'running' && pct > 3 && pct < 100)
+    ? ` Осталось около ${Math.ceil((Date.now() - window.t0) / pct * (100 - pct) / 60000)} мин.` : '';
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('progress-pct').textContent = (j.status === 'done' ? 100 : pct) + '%';
+  document.getElementById('progress-text').textContent =
+    j.status === 'done' ? `Готово! Найдено объектов: ${j.detections}`
+      : `Обработано ${Math.min(j.done_frames, j.total_frames)}/${j.total_frames} интервалов, находок: ${j.detections}.${eta}`;
+  const det = (await (await fetch('/api/detections')).json()).filter(d => d.job_id === jobId);
+  document.querySelector('#live-table tbody').innerHTML = det.length ? det.slice(0, 30).map(d =>
+    `<tr><td><img class="thumb" src="/${esc(d.image_path)}"></td>
+     <td class="num">${(d.confidence*100).toFixed(0)}%</td>
+     <td class="coord">${coords(d)}</td>
+     <td>${rtkTag(d.rtk)}</td></tr>`).join('') : empty(4, 'Пока ничего не найдено.');
+  if (j.status === 'queued') document.getElementById('progress-text').textContent = 'В очереди: сначала дообрабатывается другое видео.';
+  if (j.status === 'stopped') document.getElementById('progress-text').textContent = `Остановлено. Найдено объектов: ${j.detections}`;
+  if (['done', 'error', 'stopped'].includes(j.status)) {
+    $('stop-btn').style.display = 'none';
+    clearInterval(pollTimer);
+    submitBtn.disabled = false; submitBtn.textContent = 'Запустить обработку';
+    if (j.status === 'error') document.getElementById('progress-text').textContent =
+      'Ошибка обработки. Проверьте видео, файл SRT и наличие models/best.pt.';
+  }
+}
+
+const $ = id => document.getElementById(id);
+let ALL = [], lbList = [], lbIdx = 0, pendingId = null, markers = {}, heat = null, zoneLayer = null;
+const stT = {new: 'Новая', checked: 'Проверена', confirmed: 'Подтверждена', false: 'Ложная'};
+const stOf = d => d.status || 'new';
+form.interval.addEventListener('change', () => $('drop-video').querySelector('input').onchange());
+
+function filtered() {
+  const v = $('f-video').value, k = $('f-rtk').value, s = $('f-status').value, c = $('f-conf').value / 100;
+  return ALL.filter(d => (!v || rawName(d.video_name) === v) &&
+    (!k || (k === 'none' ? (d.rtk !== 'fix' && d.rtk !== 'float') : d.rtk === k)) &&
+    (!s || stOf(d) === s) && d.confidence >= c);
+}
+function renderRegistry() {
+  $('f-conf-out').textContent = $('f-conf').value + '%';
+  const list = filtered();
+  $('report-table').querySelector('tbody').innerHTML = list.length ? list.slice(0, 200).map((d, i) =>
+    `<tr><td class="num">${d.id}</td><td>${vname(d.video_name)}</td>
+     <td><img class="thumb" style="cursor:pointer" src="/${esc(d.image_path)}" onclick="openLb(${i})"></td>
+     <td class="coord">${coords(d)}</td><td class="num">${(d.confidence*100).toFixed(0)}%</td>
+     <td>${rtkTag(d.rtk)}</td><td><span class="tag st-${stOf(d)}">${stT[stOf(d)]}</span></td>
+     <td>${esc(d.created_at)}</td>
+     <td style="white-space:nowrap">${d.lat != null ? `<button class="x" title="Показать на карте" onclick="goMap(${d.id})">⌖</button>` : ''}
+     <button class="x" title="Удалить находку" aria-label="Удалить находку" onclick="delDetection(${d.id})">✕</button></td></tr>`
+  ).join('') : empty(9, ALL.length ? 'По этим фильтрам ничего нет.' : 'Находок пока нет. Загрузите видео на вкладке «Обработка записи».');
+}
+['f-video', 'f-rtk', 'f-status', 'f-conf'].forEach(id => $(id).addEventListener('input', renderRegistry));
+$('stop-btn').onclick = async () => { $('stop-btn').disabled = true;
+  await fetch(`/api/job/${window.curJob}/stop`, {method: 'POST'}); };
+async function delJob(id) {
+  if (!confirm('Удалить задание вместе со всеми его находками и снимками?')) return;
+  const r = await (await fetch(`/api/job/${id}/delete`, {method: 'POST'})).json();
+  if (r.error) alert(r.error);
+  refreshReport();
+}
+async function renderSites() {
+  const {sites} = await (await fetch('/api/sites')).json();
+  $('sites-table').querySelector('tbody').innerHTML = sites.length ? sites.map(s =>
+    `<tr><td class="num">${s.no}</td><td class="num">${s.n}</td>
+     <td class="coord">${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}</td>
+     <td>${s.zones.length ? esc(s.zones.join(', ')) : '—'}</td>
+     <td><span class="tag st-${s.status}">${stT[s.status]}</span></td>
+     <td style="white-space:nowrap"><a href="https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lon}" target="_blank">Маршрут</a>
+     <button class="x" title="Показать на карте" onclick="goMap(${s.ids[0]})">⌖</button></td></tr>`).join('')
+    : empty(6, 'Свалок с координатами пока нет. Загрузите видео вместе с файлом SRT.');
+}
+$('zones-file').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  const fd = new FormData(); fd.append('file', f);
+  const r = await (await fetch('/api/zones', {method: 'POST', body: fd})).json();
+  alert(r.error || `Загружено зон: ${r.features.length}`);
+  e.target.value = ''; refreshReport();
+};
+function goMap(id) { pendingId = id; document.querySelector('[data-tab="tab-map"]').click(); }
+
+// --- просмотр снимка ---
+function openLb(i) { lbList = filtered(); lbIdx = i; $('lb').hidden = false; showLb(); }
+function openById(id) { lbList = ALL; lbIdx = Math.max(0, ALL.findIndex(d => d.id === id)); $('lb').hidden = false; showLb(); }
+function closeLb() { $('lb').hidden = true; }
+function showLb() {
+  const d = lbList[lbIdx]; if (!d) return closeLb();
+  $('lb-img').src = '/' + (d.frame_path || d.image_path);
+  $('lb-info').innerHTML = `<b>Находка #${d.id}</b>, ${vname(d.video_name)}<br>
+    Уверенность ${(d.confidence*100).toFixed(0)}%<br>Координаты: ${coords(d)}<br>${rtkTag(d.rtk)}`;
+  $('lb-actions').innerHTML = Object.entries(stT).map(([k, t]) =>
+    `<button class="btn ghost ${stOf(d) === k ? 'on' : ''}" onclick="setStatus(${d.id}, '${k}')">${t}</button>`).join('');
+}
+async function setStatus(id, st) {
+  await fetch(`/api/detection/${id}/status`, {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({status: st})});
+  const d = ALL.find(x => x.id === id); if (d) d.status = st;
+  showLb(); renderRegistry();
+}
+const lbStep = k => { lbIdx = (lbIdx + k + lbList.length) % lbList.length; showLb(); };
+$('lb-prev').onclick = () => lbStep(-1); $('lb-next').onclick = () => lbStep(1); $('lb-close').onclick = closeLb;
+$('lb').onclick = e => { if (e.target.id === 'lb') closeLb(); };
+document.addEventListener('keydown', e => { if ($('lb').hidden) return;
+  if (e.key === 'Escape') closeLb(); if (e.key === 'ArrowLeft') lbStep(-1); if (e.key === 'ArrowRight') lbStep(1); });
+
+// --- тема ---
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t; $('theme-btn').textContent = t === 'dark' ? 'Светлая тема' : 'Тёмная тема';
+  try { localStorage.setItem('theme', t); } catch (e) {}
+}
+$('theme-btn').onclick = () => applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+applyTheme((() => { try { return localStorage.getItem('theme'); } catch (e) { return null; } })() || 'light');
+</script>
+</body>
+</html>
